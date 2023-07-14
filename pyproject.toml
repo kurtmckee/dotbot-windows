@@ -1,0 +1,65 @@
+[tool.poetry]
+name = "dotbot-windows"
+version = "1.0.0"
+description = "Configure Windows using dotbot"
+authors = ["Kurt McKee <contactme@kurtmckee.org>"]
+license = "MIT"
+readme = "README.rst"
+repository = "https://github.com/kurtmckee/dotbot-windows"
+keywords = ["dotbot", "dotbot-plugin", "windows", "dotfiles"]
+
+[tool.poetry.dependencies]
+python = ">=3.8"
+dotbot = ">=1.19.0"
+
+[tool.poetry.group.dev.dependencies]
+scriv = {extras = ["toml"], version = ">=1.2.0"}
+
+[build-system]
+requires = ["poetry-core>=1.5.0"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.coverage.run]
+branch = true
+parallel = true
+data_file = ".tox/.coverage-data-files/.coverage"
+source = [
+    "dotbot_windows",
+    "tests",
+]
+
+[tool.coverage.paths]
+source = [
+    "src",
+    "*/site-packages",
+]
+
+[tool.coverage.report]
+fail_under = 41
+
+[tool.mypy]
+packages = "dotbot_windows"
+strict = true
+sqlite_cache = true
+
+[[tool.mypy.overrides]]
+module = [
+    "dotbot.*",
+    "pytest",
+]
+ignore_missing_imports = true
+
+[tool.scriv]
+version = "literal: pyproject.toml: tool.poetry.version"
+categories = [
+    "Python support",
+    "Added",
+    "Removed",
+    "Changed",
+    "Fixed",
+]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "error",
+]

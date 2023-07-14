@@ -1,0 +1,107 @@
+name: "Test"
+
+on:
+  pull_request:
+  push:
+      branches:
+        - "main"
+        - "releases"
+
+jobs:
+  test:
+    name: "Test"
+    runs-on: "windows-latest"
+
+    steps:
+      # The week number is used for cache-busting.
+      - name: "Identify week number"
+        shell: "bash"
+        run: "date +'%V' > week-number.txt"
+
+      - name: "Checkout branch"
+        uses: "actions/checkout@v3"
+
+      - name: "Setup Pythons"
+        id: "setup-python"
+        uses: "actions/setup-python@v4"
+        with:
+          python-version: |
+            3.8
+            3.9
+            3.10
+            3.12
+            3.11
+          allow-prereleases: true
+          # Cache packages that pip downloads.
+          # This does not cache the installed files.
+          cache: "pip"
+          cache-dependency-path: |
+            .github/workflows/test.yaml
+            pyproject.toml
+            tox.ini
+            week-number.txt
+
+      - name: "Restore cache"
+        id: "restore-cache"
+        uses: "actions/cache@v3"
+        with:
+          path: |
+            .tox/
+            .venv/
+          key: "test-hash=${{ hashFiles('.github/workflows/test.yaml', 'pyproject.toml', 'tox.ini', 'week-number.txt') }}"
+
+      - name: "Create a virtual environment"
+        if: "steps.restore-cache.outputs.cache-hit == false"
+        run: |
+          python -m venv .venv
+          .venv/Scripts/python -m pip install --upgrade pip setuptools wheel
+          .venv/Scripts/pip install tox
+
+      - name: "Test"
+        run: .venv/Scripts/tox run
+
+
+  lint:
+    name: "Lint"
+    runs-on: "windows-latest"
+    steps:
+      # The week number is used for cache-busting.
+      - name: "Identify week number"
+        run: "date +'%V' > week-number.txt"
+
+      - name: "Checkout branch"
+        uses: "actions/checkout@v3"
+
+      - name: "Setup Pythons"
+        id: "setup-python"
+        uses: "actions/setup-python@v4"
+        with:
+          python-version: "3.11"
+          # Cache packages that pip downloads.
+          # This does not cache the installed files.
+          cache: "pip"
+          cache-dependency-path: |
+            .github/workflows/test.yaml
+            pyproject.toml
+            tox.ini
+            week-number.txt
+
+      - name: "Restore cache"
+        id: "restore-cache"
+        uses: "actions/cache@v3"
+        with:
+          path: |
+            .mypy_cache/
+            .tox/
+            .venv/
+          key: "lint-hash=${{ hashFiles('.github/workflows/test.yaml', 'pyproject.toml', 'tox.ini', 'week-number.txt') }}"
+
+      - name: "Create a virtual environment"
+        if: "steps.restore-cache.outputs.cache-hit == false"
+        run: |
+          python -m venv .venv
+          .venv/Scripts/python -m pip install --upgrade pip setuptools wheel
+          .venv/Scripts/pip install tox
+
+      - name: "Lint type annotations"
+        run: .venv/Scripts/tox run -e mypy
