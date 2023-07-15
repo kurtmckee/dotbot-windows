@@ -11,7 +11,12 @@ import pathlib
 import subprocess
 import sys
 import typing
-import winreg
+
+# Protect cross-platform plugin loading.
+try:
+    import winreg
+except ImportError:
+    winreg = None  # type: ignore[assignment]
 
 import dotbot.plugin
 
@@ -52,7 +57,7 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
                 "Check the debug logs for more information."
             )
 
-        if not sys.platform.startswith("win32"):
+        if not sys.platform.startswith("win32") or winreg is None:
             self._log.warning(
                 f"The Windows plugin cannot run on '{sys.platform}' platforms."
             )
