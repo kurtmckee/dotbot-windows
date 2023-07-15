@@ -34,7 +34,7 @@ Sample configuration:
 
     windows:
       personalization:
-        background-color: "#0099ff"
+        background-color: "#2A4661"
 
       registry:
         import: "my-registry-tweaks/"
@@ -130,7 +130,7 @@ Configuration
 
 **Personalization**
 
-You can configure the desktop background color using a hexadecimal color (like ``"#0099ff"``)
+You can configure the desktop background color using a hexadecimal color (like ``"#2A4661"``)
 or a triplet of decimal RGB values (like ``"0 153 255"``).
 
 Here are examples demonstrating the two formats:
@@ -139,13 +139,13 @@ Here are examples demonstrating the two formats:
 
     windows:
         personalization:
-            background-color: "#0099ff"
+            background-color: "#2A4661"
 
 ..  code-block:: yaml
 
     windows:
         personalization:
-            background-color: "0 153 255"
+            background-color: "42 70 97"
 
 **Registry**
 
