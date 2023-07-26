@@ -43,7 +43,7 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         return True
 
-    def handle(self, directive: str, data: dict[str, typing.Any]) -> bool:
+    def handle(self, directive: str, data: dict[str, typing.Any] | typing.Any) -> bool:
         """
         Configure Windows using dotbot.
 
@@ -229,6 +229,11 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
 @functools.lru_cache
 def get_hive_name(hive: int) -> str:
+    """Get the name of a hive given its integer identifier.
+
+    Hive identifiers are unique.
+    """
+
     hives = {
         getattr(winreg, name): name for name in dir(winreg) if name.startswith("HKEY_")
     }
