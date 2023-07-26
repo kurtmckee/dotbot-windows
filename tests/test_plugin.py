@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: MIT
 
 import sys
+import winreg
 
 import pytest
 
@@ -51,3 +52,15 @@ def test_set_background_color_value_error(color):
 
     with pytest.raises(ValueError):
         dotbot_windows.Windows({}).set_background_color(color)
+
+
+@pytest.mark.parametrize(
+    "data_type, name",
+    (
+        (float("nan"), "UNKNOWN_DATA_TYPE"),
+        (winreg.REG_DWORD_LITTLE_ENDIAN, "REG_DWORD"),
+        (winreg.REG_DWORD, "REG_DWORD"),
+    ),
+)
+def test_get_data_type_name(data_type, name):
+    assert dotbot_windows.get_data_type_name(data_type) == name

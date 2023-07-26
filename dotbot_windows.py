@@ -237,7 +237,20 @@ def get_hive_name(hive: int) -> str:
 
 @functools.lru_cache
 def get_data_type_name(data_type: int) -> str:
-    data_types = {
-        getattr(winreg, name): name for name in dir(winreg) if name.startswith("REG_")
-    }
-    return data_types.get(data_type, "UNKNOWN_DATA_TYPE")
+    """Get a name for a data type given an integer identifier.
+
+    Data types are not unique, so the name returned may not match expectations.
+    For example, REG_DWORD and REG_DWORD_LITTLE_ENDIAN share the same value.
+    This function chooses the shortest name from the available options.
+    """
+
+    names = sorted(
+        (len(name), name)
+        for name in dir(winreg)
+        if name.startswith("REG_") and getattr(winreg, name) == data_type
+    )
+
+    if names:
+        return names[0][1]
+
+    return "UNKNOWN_DATA_TYPE"
