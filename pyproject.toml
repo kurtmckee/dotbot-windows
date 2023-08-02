@@ -35,7 +35,7 @@ source = [
 ]
 
 [tool.coverage.report]
-fail_under = 74
+fail_under = 79
 
 [tool.mypy]
 packages = "dotbot_windows"

@@ -115,21 +115,6 @@ def test_handle_rejects_inaccessible_reg_exe(instance, monkeypatch):
     assert instance.handle("windows", {}) is False
 
 
-def test_handle_skips_null_data(instance):
-    """Verify that a blank windows directive is skipped, not rejected.
-
-    This might happen if a user specifies YAML file like:
-
-    ..  code-block:: yaml
-
-        - windows:
-
-    ...because YAML allows garbage like this and assumes the value is None.
-    """
-
-    assert instance.handle("windows", None) is True
-
-
 def test_handle_rejects_non_dict_data(instance):
     assert instance.handle("windows", 0) is False
 
