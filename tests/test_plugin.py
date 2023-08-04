@@ -42,9 +42,11 @@ def test_versions_match():
     (
         "",  # Empty
         "#55555",  # Too short
-        "#7777777"  # Too long
-        "#00000g"  # Not hexadecimal
-        "0 0"  # 2 values
+        "#7777777",  # Too long
+        "#0g0000",  # Not hexadecimal (red)
+        "#000g00",  # Not hexadecimal (green)
+        "#00000g",  # Not hexadecimal (blue)
+        "0 0",  # 2 values
         "0 0 0 0",  # 4 values
         "-1 0 0",  # Red out of range (< 0)
         "256 0 0",  # Red out of range (> 255)
