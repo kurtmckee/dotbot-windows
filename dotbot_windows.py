@@ -15,7 +15,7 @@ import typing
 # Protect cross-platform plugin loading.
 try:
     import winreg
-except ImportError:
+except ImportError:  # pragma: no cover
     winreg = None  # type: ignore[assignment]
 
 import dotbot.plugin
@@ -124,8 +124,8 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         success: bool = True
 
-        background_color = data.get("personalization", {}).get("background-color", "")
-        if background_color:
+        background_color = data.get("personalization", {}).get("background-color", None)
+        if background_color is not None:
             try:
                 success &= self.set_background_color(background_color)
             except ValueError:
@@ -138,8 +138,8 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         success: bool = True
 
-        registry_import = data.get("registry", {}).get("import", "")
-        if registry_import:
+        registry_import = data.get("registry", {}).get("import", None)
+        if registry_import is not None:
             for path in pathlib.Path(registry_import).rglob("*.reg"):
                 success &= self.import_registry_file(path.absolute())
 
@@ -147,10 +147,6 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
     def import_registry_file(self, path: pathlib.Path) -> bool:
         """Import a single registry file."""
-
-        if not path.is_file():
-            self._log.error(f"Unable to find '{path}' for import into the registry.")
-            return False
 
         result = subprocess.run((REG_EXE, "import", path), capture_output=True)
 
@@ -166,9 +162,12 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
     def get_registry_value(
         self, hive: int, key: str, sub_key: str
-    ) -> tuple[typing.Any, int]:
-        with winreg.OpenKey(hive, key) as open_key:
-            value, data_type = winreg.QueryValueEx(open_key, sub_key)
+    ) -> tuple[typing.Any, int] | tuple[None, None]:
+        try:
+            with winreg.OpenKey(hive, key) as open_key:
+                value, data_type = winreg.QueryValueEx(open_key, sub_key)
+        except OSError:
+            return None, None
 
         hive_name = get_hive_name(hive)
         data_type_name = get_data_type_name(data_type)

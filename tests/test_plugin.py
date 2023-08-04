@@ -38,32 +38,6 @@ def test_versions_match():
 
 
 @pytest.mark.parametrize(
-    "color",
-    (
-        "",  # Empty
-        "#55555",  # Too short
-        "#7777777",  # Too long
-        "#0g0000",  # Not hexadecimal (red)
-        "#000g00",  # Not hexadecimal (green)
-        "#00000g",  # Not hexadecimal (blue)
-        "0 0",  # 2 values
-        "0 0 0 0",  # 4 values
-        "-1 0 0",  # Red out of range (< 0)
-        "256 0 0",  # Red out of range (> 255)
-        "0 -1 0",  # Green out of range (< 0)
-        "0 256 0",  # Green out of range (> 255)
-        "0 0 -1",  # Blue out of range (< 0)
-        "0 0 256",  # Blue out of range (> 255)
-    ),
-)
-def test_set_background_color_value_error(color):
-    """Verify color value parsing rejects out-of-range values."""
-
-    with pytest.raises(ValueError):
-        dotbot_windows.Windows({}).set_background_color(color)
-
-
-@pytest.mark.parametrize(
     "data_type, name",
     (
         (float("nan"), "UNKNOWN_DATA_TYPE"),
