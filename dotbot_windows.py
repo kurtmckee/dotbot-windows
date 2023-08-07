@@ -15,7 +15,7 @@ import typing
 # Protect cross-platform plugin loading.
 try:
     import winreg
-except ImportError:
+except ImportError:  # pragma: no cover
     winreg = None  # type: ignore[assignment]
 
 import dotbot.plugin
@@ -23,6 +23,16 @@ import dotbot.plugin
 __version__ = "1.0.0"
 
 REG_EXE = pathlib.Path(r"C:\Windows\system32\reg.exe")
+
+
+VALID_TYPES = {
+    "registry": {
+        "import": str,
+    },
+    "personalization": {
+        "background-color": str,
+    },
+}
 
 
 # mypy reports the following error for the Windows class:
@@ -43,7 +53,7 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         return True
 
-    def handle(self, directive: str, data: dict[str, typing.Any]) -> bool:
+    def handle(self, directive: str, data: dict[str, typing.Any] | typing.Any) -> bool:
         """
         Configure Windows using dotbot.
 
@@ -65,10 +75,11 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
         if not REG_EXE.is_file():
             self._log.error(f"The Windows plugin must be able to access '{REG_EXE}'.")
             return False
-        if data is None:
-            return True
-        if not isinstance(data, dict):
-            self._log.error("The 'windows' configuration value must be a dictionary.")
+
+        try:
+            self.validate_data("windows", data, VALID_TYPES)
+        except ValueError as error:
+            self._log.error(error.args[0])
             return False
 
         success: bool = True
@@ -81,13 +92,40 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         return success
 
+    def validate_data(
+        self, key: str, data: typing.Any, expected: dict[str, typing.Any]
+    ) -> None:
+        """Validate the shape of the 'windows' config data.
+
+        This method calls itself recursively to validate nested value types.
+        """
+
+        if not isinstance(data, dict):
+            raise ValueError(f"Config value '{key}' must be a dict.")
+
+        # Verify there are no unexpected keys.
+        unexpected_keys = set(data.keys()) - expected.keys()
+        if unexpected_keys:
+            raise ValueError(f"Config value '{key}' contains unexpected keys.")
+
+        for sub_key, value in expected.items():
+            if sub_key not in data:
+                continue
+            elif isinstance(value, type):
+                if isinstance(data[sub_key], value):
+                    continue
+                message = f"Config value '{key}.{sub_key}' must be a {value.__name__}."
+                raise ValueError(message)
+            else:
+                self.validate_data(f"{key}.{sub_key}", data[sub_key], expected[sub_key])
+
     def handle_personalization(self, data: dict[str, typing.Any]) -> bool:
         """Configure personalization settings."""
 
         success: bool = True
 
-        background_color = data.get("personalization", {}).get("background-color", "")
-        if background_color:
+        background_color = data.get("personalization", {}).get("background-color", None)
+        if background_color is not None:
             try:
                 success &= self.set_background_color(background_color)
             except ValueError:
@@ -100,28 +138,15 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         success: bool = True
 
-        if not isinstance(data.get("registry", {}), dict):
-            self._log.error("The 'windows.registry' config value must be a dictionary.")
-            return False
-
-        registry_import = data.get("registry", {}).get("import", "")
-        if not isinstance(registry_import, str):
-            self._log.error(
-                "The 'windows.registry.import' config value must be a string."
-            )
-            return False
-
-        for path in pathlib.Path(registry_import).rglob("*.reg"):
-            success &= self.import_registry_file(path.absolute())
+        registry_import = data.get("registry", {}).get("import", None)
+        if registry_import is not None:
+            for path in pathlib.Path(registry_import).rglob("*.reg"):
+                success &= self.import_registry_file(path.absolute())
 
         return success
 
     def import_registry_file(self, path: pathlib.Path) -> bool:
         """Import a single registry file."""
-
-        if not path.is_file():
-            self._log.error(f"Unable to find '{path}' for import into the registry.")
-            return False
 
         result = subprocess.run((REG_EXE, "import", path), capture_output=True)
 
@@ -137,9 +162,12 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
     def get_registry_value(
         self, hive: int, key: str, sub_key: str
-    ) -> tuple[typing.Any, int]:
-        with winreg.OpenKey(hive, key) as open_key:
-            value, data_type = winreg.QueryValueEx(open_key, sub_key)
+    ) -> tuple[typing.Any, int] | tuple[None, None]:
+        try:
+            with winreg.OpenKey(hive, key) as open_key:
+                value, data_type = winreg.QueryValueEx(open_key, sub_key)
+        except OSError:
+            return None, None
 
         hive_name = get_hive_name(hive)
         data_type_name = get_data_type_name(data_type)
@@ -229,6 +257,11 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
 @functools.lru_cache
 def get_hive_name(hive: int) -> str:
+    """Get the name of a hive given its integer identifier.
+
+    Hive identifiers are unique.
+    """
+
     hives = {
         getattr(winreg, name): name for name in dir(winreg) if name.startswith("HKEY_")
     }
@@ -237,7 +270,20 @@ def get_hive_name(hive: int) -> str:
 
 @functools.lru_cache
 def get_data_type_name(data_type: int) -> str:
-    data_types = {
-        getattr(winreg, name): name for name in dir(winreg) if name.startswith("REG_")
-    }
-    return data_types.get(data_type, "UNKNOWN_DATA_TYPE")
+    """Get a name for a data type given an integer identifier.
+
+    Data types are not unique, so the name returned may not match expectations.
+    For example, REG_DWORD and REG_DWORD_LITTLE_ENDIAN share the same value.
+    This function chooses the shortest name from the available options.
+    """
+
+    names = sorted(
+        (len(name), name)
+        for name in dir(winreg)
+        if name.startswith("REG_") and getattr(winreg, name) == data_type
+    )
+
+    if names:
+        return names[0][1]
+
+    return "UNKNOWN_DATA_TYPE"
