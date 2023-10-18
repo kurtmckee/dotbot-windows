@@ -4,3 +4,8 @@ updates:
     directory: "/"
     schedule:
       interval: "monthly"
+    # Submit a single PR to update all GitHub action versions.
+    groups:
+      batch:
+        patterns:
+          - "*"
