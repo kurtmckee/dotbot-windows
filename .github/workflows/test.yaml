@@ -12,12 +12,17 @@ jobs:
     name: "Test"
     runs-on: "windows-latest"
 
-    steps:
-      # The week number is used for cache-busting.
-      - name: "Identify week number"
-        shell: "bash"
-        run: "date +'%V' > week-number.txt"
+    strategy:
+      matrix:
+        run:
+          - cpythons:
+              - "3.8"
+              - "3.9"
+              - "3.10"
+              - "3.11"
+              - "3.12"
 
+    steps:
       - name: "Checkout branch"
         uses: "actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11" # v4.1.1
 
@@ -25,66 +30,18 @@ jobs:
         id: "setup-python"
         uses: "actions/setup-python@65d7f2d534ac1bc67fcd62888c5f4f3d2cb2b236" # v4.7.1
         with:
-          python-version: |
-            3.8
-            3.9
-            3.10
-            3.12
-            3.11
+          python-version: "${{ join(matrix.run.cpythons, '\n') }}"
           allow-prereleases: true
           # Cache packages that pip downloads.
           # This does not cache the installed files.
           cache: "pip"
           cache-dependency-path: |
-            .github/workflows/test.yaml
             pyproject.toml
             tox.ini
-            week-number.txt
+            requirements/**/*.txt
 
-      - name: "Restore cache"
-        id: "restore-cache"
-        uses: "actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84" # v3.3.2
-        with:
-          path: |
-            .tox/
-            .venv/
-          key: "test-hash=${{ hashFiles('.github/workflows/test.yaml', 'pyproject.toml', 'tox.ini', 'week-number.txt') }}"
-
-      - name: "Create a virtual environment"
-        if: "steps.restore-cache.outputs.cache-hit == false"
-        run: |
-          python -m venv .venv
-          .venv/Scripts/python -m pip install --upgrade pip setuptools wheel
-          .venv/Scripts/pip install tox
-
-      - name: "Test"
-        run: .venv/Scripts/tox run
-
-
-  lint:
-    name: "Lint"
-    runs-on: "windows-latest"
-    steps:
-      # The week number is used for cache-busting.
-      - name: "Identify week number"
-        run: "date +'%V' > week-number.txt"
-
-      - name: "Checkout branch"
-        uses: "actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11" # v4.1.1
-
-      - name: "Setup Pythons"
-        id: "setup-python"
-        uses: "actions/setup-python@65d7f2d534ac1bc67fcd62888c5f4f3d2cb2b236" # v4.7.1
-        with:
-          python-version: "3.11"
-          # Cache packages that pip downloads.
-          # This does not cache the installed files.
-          cache: "pip"
-          cache-dependency-path: |
-            .github/workflows/test.yaml
-            pyproject.toml
-            tox.ini
-            week-number.txt
+      - name: "Detect Pythons"
+        uses: "kurtmckee/detect-pythons@cd2193638306e04e41ac36f0f9290f18680138ac" # v1.0.0
 
       - name: "Restore cache"
         id: "restore-cache"
@@ -94,7 +51,7 @@ jobs:
             .mypy_cache/
             .tox/
             .venv/
-          key: "lint-hash=${{ hashFiles('.github/workflows/test.yaml', 'pyproject.toml', 'tox.ini', 'week-number.txt') }}"
+          key: "test-os=${{ runner.os }}-hash=${{ hashFiles('.python-identifiers', 'pyproject.toml', 'tox.ini', 'requirements/**/*.txt') }}"
 
       - name: "Create a virtual environment"
         if: "steps.restore-cache.outputs.cache-hit == false"
@@ -103,5 +60,6 @@ jobs:
           .venv/Scripts/python -m pip install --upgrade pip setuptools wheel
           .venv/Scripts/pip install tox
 
-      - name: "Lint type annotations"
-        run: .venv/Scripts/tox run -e mypy
+      - name: "Test"
+        run: |
+          .venv/Scripts/tox run --colored yes -e py${{ join(matrix.run.cpythons, ',py') }},coverage-report-ci,mypy
