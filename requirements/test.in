@@ -1,6 +1,0 @@
-coverage[toml]
-pyfakefs
-pytest
-pytest-randomly
-pyfakefs
-tomli; python_version < "3.11"
