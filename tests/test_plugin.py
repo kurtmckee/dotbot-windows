@@ -1,5 +1,5 @@
 # dotbot-windows -- Configure Windows using dotbot.
-# Copyright 2023 Kurt McKee <contactme@kurtmckee.org>
+# Copyright 2023-2024 Kurt McKee <contactme@kurtmckee.org>
 # SPDX-License-Identifier: MIT
 
 import pathlib
