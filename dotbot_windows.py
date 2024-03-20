@@ -7,7 +7,9 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes
 import functools
+import os
 import pathlib
+import platform
 import subprocess
 import sys
 import typing
@@ -31,6 +33,9 @@ VALID_TYPES = {
     },
     "personalization": {
         "background-color": str,
+    },
+    "fonts": {
+        "path": str,
     },
 }
 
@@ -90,6 +95,9 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
         # Modify the registry.
         success &= self.handle_registry_imports(data)
 
+        # Create a font symlink.
+        success &= self.handle_fonts(data)
+
         return success
 
     def validate_data(
@@ -124,7 +132,9 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         success: bool = True
 
-        background_color = data.get("personalization", {}).get("background-color", None)
+        background_color: str | None = data.get("personalization", {}).get(
+            "background-color", None
+        )
         if background_color is not None:
             try:
                 success &= self.set_background_color(background_color)
@@ -133,12 +143,68 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         return success
 
+    def handle_fonts(self, data: dict[str, typing.Any]) -> bool:
+        """Install fonts locally.
+
+        This only works in Windows 10 17704 and higher.
+        https://blogs.windows.com/windows-insider/2018/06/27/announcing#windows-10-17704
+        """
+
+        path: str | None = data.get("fonts", {}).get("path", None)
+        if path is None:
+            return True
+
+        # Only Windows 10 build 17704 and higher are supported.
+        windows_version_info = platform.win32_ver()
+        version = int(windows_version_info[0])
+        build = int(platform.win32_ver()[1].split(".")[-1])
+        if not (version > 10 or (version == 10 and build >= 17704)):
+            msg = (
+                "Fonts can only be configured on Windows 10 build 17704 and higher "
+                f"(found Windows {version} build {build})"
+            )
+            self._log.error(msg)
+            return False
+
+        src = pathlib.Path(os.path.expandvars(path)).expanduser()
+        user_font_path = os.path.expandvars("${LOCALAPPDATA}/Microsoft/Windows/Fonts")
+        dst = pathlib.Path(user_font_path)
+
+        # *src* must be a directory.
+        if not src.is_dir():
+            self._log.error(f"The font source '{src}' is not a directory that exists")
+            return False
+
+        # If the font path is a symlink, it may need to be updated.
+        if dst.is_symlink():
+            if os.readlink(dst) == str(src.resolve()):
+                self._log.lowinfo("Fonts are already configured")
+                return True
+            self._log.info("Updating the existing Windows font path symlink")
+            dst.unlink()
+
+        # If the font path is a directory, it must be empty before overwriting.
+        elif dst.is_dir():
+            if os.listdir(dst):
+                self._log.error(f"The user font directory '{dst}' must be empty")
+                return False
+            dst.rmdir()
+
+        # If the font path is a file, the user must intervene.
+        elif dst.is_file():
+            self._log.error(f"The user font directory '{dst}' is a file")
+            return False
+
+        # Create a symlink.
+        os.symlink(src, dst, target_is_directory=True)
+        return True
+
     def handle_registry_imports(self, data: dict[str, typing.Any]) -> bool:
         """Import .reg files into the registry."""
 
         success: bool = True
 
-        registry_import = data.get("registry", {}).get("import", None)
+        registry_import: str | None = data.get("registry", {}).get("import", None)
         if registry_import is not None:
             for path in pathlib.Path(registry_import).rglob("*.reg"):
                 success &= self.import_registry_file(path.absolute())
