@@ -39,6 +39,9 @@ Sample configuration:
       registry:
         import: "my-registry-tweaks/"
 
+      fonts:
+        path: "my-standard-fonts/"
+
 
 Installation
 ============
@@ -164,6 +167,28 @@ Here's a dotbot configuration file example:
             import: "registry-export-files"
 
 
+**Fonts**
+
+Starting with Windows 10 build 17704, users can `install fonts without admin permissions`_.
+The fonts can be copied into ``"%LOCALAPPDATA%/Microsoft/Windows/Fonts"``,
+so this plugin replaces that directory with a symlink to a directory of your choosing.
+
+Here's a dotbot configuration file example:
+
+..  code-block:: yaml
+
+    windows:
+      fonts:
+        path: "my-standard-fonts/"
+
+..  note::
+
+    This plugin will only create the symlink -- or update it -- under these circumstances:
+
+    *   The user's Windows font directory must be an empty directory,
+    *   OR the font directory must already be a symlink
+
+
 Development
 ===========
 
@@ -195,3 +220,4 @@ Then, follow these steps to create a virtual environment and run the unit tests 
 ..  =====
 ..
 ..  _dotbot: https://github.com/anishathalye/dotbot
+..  _install fonts without admin permissions: https://blogs.windows.com/windows-insider/2018/06/27/announcing-windows-10-insider-preview-build-17704/

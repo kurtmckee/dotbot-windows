@@ -15,6 +15,9 @@ def test_good_config(instance):
         "registry": {
             "import": "xyz",
         },
+        "fonts": {
+            "path": "xyz",
+        },
     }
     instance.validate_data("windows", data, dotbot_windows.VALID_TYPES)
 
