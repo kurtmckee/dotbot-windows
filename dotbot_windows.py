@@ -10,6 +10,7 @@ import functools
 import os
 import pathlib
 import platform
+import shutil
 import subprocess
 import sys
 import typing
@@ -150,8 +151,8 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
         https://blogs.windows.com/windows-insider/2018/06/27/announcing#windows-10-17704
         """
 
-        path: str | None = data.get("fonts", {}).get("path", None)
-        if path is None:
+        font_path: str | None = data.get("fonts", {}).get("path", None)
+        if font_path is None:
             return True
 
         # Only Windows 10 build 17704 and higher are supported.
@@ -166,7 +167,7 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
             self._log.error(msg)
             return False
 
-        src = pathlib.Path(os.path.expandvars(path)).expanduser()
+        src = pathlib.Path(os.path.expandvars(font_path)).expanduser()
         user_font_path = os.path.expandvars("${LOCALAPPDATA}/Microsoft/Windows/Fonts")
         dst = pathlib.Path(user_font_path)
 
@@ -175,29 +176,60 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
             self._log.error(f"The font source '{src}' is not a directory that exists")
             return False
 
-        # If the font path is a symlink, it may need to be updated.
-        if dst.is_symlink():
-            if os.readlink(dst) == str(src.resolve()):
-                self._log.lowinfo("Fonts are already configured")
-                return True
-            self._log.info("Updating the existing Windows font path symlink")
-            dst.unlink()
-
-        # If the font path is a directory, it must be empty before overwriting.
-        elif dst.is_dir():
-            if os.listdir(dst):
-                self._log.error(f"The user font directory '{dst}' must be empty")
-                return False
-            dst.rmdir()
-
         # If the font path is a file, the user must intervene.
         elif dst.is_file():
             self._log.error(f"The user font directory '{dst}' is a file")
             return False
 
-        # Create a symlink.
-        os.symlink(src, dst, target_is_directory=True)
-        return True
+        # If the font path doesn't exist, create the directory.
+        elif not dst.exists():
+            dst.mkdir(parents=True)
+
+        success = True
+        src_fonts = {path.name: path for path in self._get_font_files(src)}
+        dst_fonts = {path.name: path for path in self._get_font_files(dst)}
+
+        # Note which fonts are already installed.
+        for font_name in sorted(set(src_fonts) & set(dst_fonts)):
+            self._log.lowinfo(f"Font '{font_name}' is already installed")
+
+        # Copy font files from *src* to *dst*.
+        copied_fonts = set()
+        for font_name in sorted(set(src_fonts) - set(dst_fonts)):
+            try:
+                shutil.copyfile(src_fonts[font_name], dst / font_name)
+            except OSError:
+                msg = f"Unable to copy '{font_name}' to Windows font directory"
+                self._log.error(msg)
+                success = False
+            else:
+                copied_fonts.add(dst / font_name)
+
+        # Update the Windows registry.
+        for copied_font in copied_fonts:
+            try:
+                self.set_registry_value(
+                    hive=winreg.HKEY_CURRENT_USER,
+                    key=r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts",
+                    sub_key=f"{copied_font.name} (dotbot-windows)",
+                    data_type=winreg.REG_SZ,
+                    value=str(copied_font),
+                )
+            except ValueError:
+                msg = f"Unable to install '{copied_font.name}' to Windows registry"
+                self._log.error(msg)
+                success = False
+            else:
+                self._log.info(f"Installed font '{copied_font.name}'")
+
+        return success
+
+    @staticmethod
+    def _get_font_files(path: pathlib.Path) -> typing.Iterator[pathlib.Path]:
+        """Find font files in a given directory."""
+
+        for extension in ("otc", "otf", "ttc", "ttf"):
+            yield from path.rglob(f"*.{extension}")
 
     def handle_registry_imports(self, data: dict[str, typing.Any]) -> bool:
         """Import .reg files into the registry."""
