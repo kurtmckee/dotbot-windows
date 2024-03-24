@@ -2,8 +2,8 @@
 # Copyright 2023-2024 Kurt McKee <contactme@kurtmckee.org>
 # SPDX-License-Identifier: MIT
 
-import os
 import pathlib
+import unittest.mock
 
 import pytest
 
@@ -32,6 +32,7 @@ def set_windows_version(monkeypatch):
 def data(fs):
     path = pathlib.Path("/src").absolute()
     path.mkdir()
+    (path / "example.ttf").touch()
     yield {"fonts": {"path": str(path)}}
 
 
@@ -58,43 +59,6 @@ def test_src_path_does_not_exist(instance, fs, capsys):
     assert "bogus' is not a directory that exists" in capsys.readouterr().out
 
 
-def test_font_path_is_correct_symlink(instance, font_path, data, capsys, fs):
-    """Confirm a correct font path symlink is not updated."""
-
-    font_path.symlink_to(data["fonts"]["path"], target_is_directory=True)
-    assert instance.handle_fonts(data) is True
-    assert "already configured" in capsys.readouterr().out
-    assert font_path.is_symlink() and os.readlink(font_path) == data["fonts"]["path"]
-
-
-def test_font_path_is_incorrect_symlink(instance, font_path, data, capsys, fs):
-    """Confirm an incorrect font path symlink is overwritten."""
-
-    font_path.symlink_to("incorrect-source-path", target_is_directory=True)
-    assert instance.handle_fonts(data) is True
-    assert "Updating" in capsys.readouterr().out
-    assert font_path.is_symlink() and os.readlink(font_path) == data["fonts"]["path"]
-
-
-def test_font_path_is_non_empty_directory(instance, font_path, data, capsys, fs):
-    """Confirm that a font path directory with contents is not overwritten."""
-
-    font_path.mkdir()
-    file = font_path / "font.ttf"
-    file.touch()
-    assert instance.handle_fonts(data) is False
-    assert "must be empty" in capsys.readouterr().out
-    assert font_path.is_dir() and file.is_file()
-
-
-def test_font_path_is_directory(instance, font_path, data, fs):
-    """Confirm that an empty font path directory is overwritten."""
-
-    font_path.mkdir()
-    assert instance.handle_fonts(data) is True
-    assert font_path.is_symlink() and os.readlink(font_path) == data["fonts"]["path"]
-
-
 def test_font_path_is_file(instance, font_path, data, capsys, fs):
     """Confirm that a font path that's a file is not overwritten.
 
@@ -107,8 +71,51 @@ def test_font_path_is_file(instance, font_path, data, capsys, fs):
     assert font_path.is_file()
 
 
-def test_font_path_does_not_exist(instance, font_path, data, fs):
+def test_font_path_does_not_exist(instance, font_path, data, fs, winreg_mock):
     """Confirm that a font path that doesn't exist is created."""
 
     assert instance.handle_fonts(data) is True
-    assert font_path.is_symlink() and os.readlink(font_path) == data["fonts"]["path"]
+    assert font_path.is_dir()
+    winreg_mock.SetValueEx.assert_called_once()
+
+
+def test_known_font_file_extensions(instance, fs):
+    """Verify all expected font file extensions are found."""
+
+    root = pathlib.Path(r"c:\root")
+    root.mkdir()
+    for extension in ("bogus", "jpeg", "otc", "otf", "ttc", "ttf"):
+        (root / f"example.{extension}").touch()
+
+    for file in set(instance._get_font_files(root)):
+        assert file.suffix in {".otc", ".otf", ".ttc", ".ttf"}
+
+
+def test_font_file_already_exists(instance, font_path, data, capsys, winreg_mock):
+    """Verify that an existing font file is not re-copied, nor re-installed."""
+
+    font_path.mkdir()
+    (font_path / "example.ttf").touch()
+
+    assert instance.handle_fonts(data) is True
+    assert "already installed" in capsys.readouterr().out
+    winreg_mock.SetValueEx.assert_not_called()
+
+
+def test_font_file_cannot_be_copied(instance, data, capsys, monkeypatch, winreg_mock):
+    """Verify that a read-only font directory is handled gracefully."""
+
+    monkeypatch.setattr("shutil.copyfile", unittest.mock.Mock(side_effect=OSError()))
+
+    assert instance.handle_fonts(data) is False
+    assert "Unable to copy" in capsys.readouterr().out
+    winreg_mock.SetValueEx.assert_not_called()
+
+
+def test_font_file_cannot_be_installed(instance, data, capsys, winreg_mock):
+    """Verify that a read-only font directory is handled gracefully."""
+
+    winreg_mock.SetValueEx.side_effect = ValueError()
+
+    assert instance.handle_fonts(data) is False
+    assert "Unable to install" in capsys.readouterr().out
