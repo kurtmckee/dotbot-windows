@@ -27,6 +27,7 @@ The dotbot-windows plugin is able to configure Windows in the following ways:
 
 *   Configure the desktop background color
 *   Import registry files (``*.reg``) from a specified directory
+*   Install fonts (TrueType and OpenType formats) from a specified directory
 
 Sample configuration:
 
@@ -170,8 +171,8 @@ Here's a dotbot configuration file example:
 **Fonts**
 
 Starting with Windows 10 build 17704, users can `install fonts without admin permissions`_.
-The fonts can be copied into ``"%LOCALAPPDATA%/Microsoft/Windows/Fonts"``,
-so this plugin replaces that directory with a symlink to a directory of your choosing.
+The fonts can be copied into ``"%LOCALAPPDATA%/Microsoft/Windows/Fonts"``
+and installed via the Windows registry.
 
 Here's a dotbot configuration file example:
 
@@ -181,19 +182,12 @@ Here's a dotbot configuration file example:
       fonts:
         path: "my-standard-fonts/"
 
-..  note::
-
-    This plugin will only create the symlink -- or update it -- under these circumstances:
-
-    *   The user's Windows font directory must be an empty directory,
-    *   OR the font directory must already be a symlink
-
 
 Development
 ===========
 
 To set up a development environment, clone the dotbot-windows plugin's git repository.
-Then, follow these steps to create a virtual environment and run the unit tests locally:
+Then, follow these steps to create a virtual environment and run the test suite:
 
 ..  code-block:: shell
 
