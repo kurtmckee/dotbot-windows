@@ -23,7 +23,7 @@ except ImportError:  # pragma: no cover
 
 import dotbot.plugin
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 REG_EXE = pathlib.Path(r"C:\Windows\system32\reg.exe")
 
