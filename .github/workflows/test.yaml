@@ -32,13 +32,6 @@ jobs:
         with:
           python-version: "${{ join(matrix.run.cpythons, '\n') }}"
           allow-prereleases: true
-          # Cache packages that pip downloads.
-          # This does not cache the installed files.
-          cache: "pip"
-          cache-dependency-path: |
-            pyproject.toml
-            tox.ini
-            requirements/**/*.txt
 
       - name: "Detect Pythons"
         uses: "kurtmckee/detect-pythons@38187a5464f266e93e5c1467699f7be2bf521d2e" # v1.1.0
