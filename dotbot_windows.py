@@ -1,5 +1,5 @@
 # dotbot-windows -- Configure Windows using dotbot.
-# Copyright 2023 Kurt McKee <contactme@kurtmckee.org>
+# Copyright 2023-2024 Kurt McKee <contactme@kurtmckee.org>
 # SPDX-License-Identifier: MIT
 
 from __future__ import annotations
@@ -7,17 +7,38 @@ from __future__ import annotations
 import ctypes
 import ctypes.wintypes
 import functools
+import os
 import pathlib
+import platform
+import shutil
 import subprocess
 import sys
 import typing
-import winreg
+
+# Protect cross-platform plugin loading.
+try:
+    import winreg
+except ImportError:  # pragma: no cover
+    winreg = None  # type: ignore[assignment]
 
 import dotbot.plugin
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 REG_EXE = pathlib.Path(r"C:\Windows\system32\reg.exe")
+
+
+VALID_TYPES = {
+    "registry": {
+        "import": str,
+    },
+    "personalization": {
+        "background-color": str,
+    },
+    "fonts": {
+        "path": str,
+    },
+}
 
 
 # mypy reports the following error for the Windows class:
@@ -38,7 +59,7 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         return True
 
-    def handle(self, directive: str, data: dict[str, typing.Any]) -> bool:
+    def handle(self, directive: str, data: dict[str, typing.Any] | typing.Any) -> bool:
         """
         Configure Windows using dotbot.
 
@@ -52,7 +73,7 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
                 "Check the debug logs for more information."
             )
 
-        if not sys.platform.startswith("win32"):
+        if not sys.platform.startswith("win32") or winreg is None:
             self._log.warning(
                 f"The Windows plugin cannot run on '{sys.platform}' platforms."
             )
@@ -60,10 +81,11 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
         if not REG_EXE.is_file():
             self._log.error(f"The Windows plugin must be able to access '{REG_EXE}'.")
             return False
-        if data is None:
-            return True
-        if not isinstance(data, dict):
-            self._log.error("The 'windows' configuration value must be a dictionary.")
+
+        try:
+            self.validate_data("windows", data, VALID_TYPES)
+        except ValueError as error:
+            self._log.error(error.args[0])
             return False
 
         success: bool = True
@@ -74,15 +96,47 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
         # Modify the registry.
         success &= self.handle_registry_imports(data)
 
+        # Create a font symlink.
+        success &= self.handle_fonts(data)
+
         return success
+
+    def validate_data(
+        self, key: str, data: typing.Any, expected: dict[str, typing.Any]
+    ) -> None:
+        """Validate the shape of the 'windows' config data.
+
+        This method calls itself recursively to validate nested value types.
+        """
+
+        if not isinstance(data, dict):
+            raise ValueError(f"Config value '{key}' must be a dict.")
+
+        # Verify there are no unexpected keys.
+        unexpected_keys = set(data.keys()) - expected.keys()
+        if unexpected_keys:
+            raise ValueError(f"Config value '{key}' contains unexpected keys.")
+
+        for sub_key, value in expected.items():
+            if sub_key not in data:
+                continue
+            elif isinstance(value, type):
+                if isinstance(data[sub_key], value):
+                    continue
+                message = f"Config value '{key}.{sub_key}' must be a {value.__name__}."
+                raise ValueError(message)
+            else:
+                self.validate_data(f"{key}.{sub_key}", data[sub_key], expected[sub_key])
 
     def handle_personalization(self, data: dict[str, typing.Any]) -> bool:
         """Configure personalization settings."""
 
         success: bool = True
 
-        background_color = data.get("personalization", {}).get("background-color", "")
-        if background_color:
+        background_color: str | None = data.get("personalization", {}).get(
+            "background-color", None
+        )
+        if background_color is not None:
             try:
                 success &= self.set_background_color(background_color)
             except ValueError:
@@ -90,33 +144,107 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
         return success
 
+    def handle_fonts(self, data: dict[str, typing.Any]) -> bool:
+        """Install fonts locally.
+
+        This only works in Windows 10 17704 and higher.
+        https://blogs.windows.com/windows-insider/2018/06/27/announcing#windows-10-17704
+        """
+
+        font_path: str | None = data.get("fonts", {}).get("path", None)
+        if font_path is None:
+            return True
+
+        # Only Windows 10 build 17704 and higher are supported.
+        windows_version_info = platform.win32_ver()
+        version = int(windows_version_info[0])
+        build = int(platform.win32_ver()[1].split(".")[-1])
+        if not (version > 10 or (version == 10 and build >= 17704)):
+            msg = (
+                "Fonts can only be configured on Windows 10 build 17704 and higher "
+                f"(found Windows {version} build {build})"
+            )
+            self._log.error(msg)
+            return False
+
+        src = pathlib.Path(os.path.expandvars(font_path)).expanduser()
+        user_font_path = os.path.expandvars("${LOCALAPPDATA}/Microsoft/Windows/Fonts")
+        dst = pathlib.Path(user_font_path)
+
+        # *src* must be a directory.
+        if not src.is_dir():
+            self._log.error(f"The font source '{src}' is not a directory that exists")
+            return False
+
+        # If the font path is a file, the user must intervene.
+        elif dst.is_file():
+            self._log.error(f"The user font directory '{dst}' is a file")
+            return False
+
+        # If the font path doesn't exist, create the directory.
+        elif not dst.exists():
+            dst.mkdir(parents=True)
+
+        success = True
+        src_fonts = {path.name: path for path in self._get_font_files(src)}
+        dst_fonts = {path.name: path for path in self._get_font_files(dst)}
+
+        # Note which fonts are already installed.
+        for font_name in sorted(set(src_fonts) & set(dst_fonts)):
+            self._log.lowinfo(f"Font '{font_name}' is already installed")
+
+        # Copy font files from *src* to *dst*.
+        copied_fonts = set()
+        for font_name in sorted(set(src_fonts) - set(dst_fonts)):
+            try:
+                shutil.copyfile(src_fonts[font_name], dst / font_name)
+            except OSError:
+                msg = f"Unable to copy '{font_name}' to Windows font directory"
+                self._log.error(msg)
+                success = False
+            else:
+                copied_fonts.add(dst / font_name)
+
+        # Update the Windows registry.
+        for copied_font in copied_fonts:
+            try:
+                self.set_registry_value(
+                    hive=winreg.HKEY_CURRENT_USER,
+                    key=r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts",
+                    sub_key=f"{copied_font.name} (dotbot-windows)",
+                    data_type=winreg.REG_SZ,
+                    value=str(copied_font),
+                )
+            except ValueError:
+                msg = f"Unable to install '{copied_font.name}' to Windows registry"
+                self._log.error(msg)
+                success = False
+            else:
+                self._log.info(f"Installed font '{copied_font.name}'")
+
+        return success
+
+    @staticmethod
+    def _get_font_files(path: pathlib.Path) -> typing.Iterator[pathlib.Path]:
+        """Find font files in a given directory."""
+
+        for extension in ("otc", "otf", "ttc", "ttf"):
+            yield from path.rglob(f"*.{extension}")
+
     def handle_registry_imports(self, data: dict[str, typing.Any]) -> bool:
         """Import .reg files into the registry."""
 
         success: bool = True
 
-        if not isinstance(data.get("registry", {}), dict):
-            self._log.error("The 'windows.registry' config value must be a dictionary.")
-            return False
-
-        registry_import = data.get("registry", {}).get("import", "")
-        if not isinstance(registry_import, str):
-            self._log.error(
-                "The 'windows.registry.import' config value must be a string."
-            )
-            return False
-
-        for path in pathlib.Path(registry_import).rglob("*.reg"):
-            success &= self.import_registry_file(path.absolute())
+        registry_import: str | None = data.get("registry", {}).get("import", None)
+        if registry_import is not None:
+            for path in pathlib.Path(registry_import).rglob("*.reg"):
+                success &= self.import_registry_file(path.absolute())
 
         return success
 
     def import_registry_file(self, path: pathlib.Path) -> bool:
         """Import a single registry file."""
-
-        if not path.is_file():
-            self._log.error(f"Unable to find '{path}' for import into the registry.")
-            return False
 
         result = subprocess.run((REG_EXE, "import", path), capture_output=True)
 
@@ -132,9 +260,12 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
     def get_registry_value(
         self, hive: int, key: str, sub_key: str
-    ) -> tuple[typing.Any, int]:
-        with winreg.OpenKey(hive, key) as open_key:
-            value, data_type = winreg.QueryValueEx(open_key, sub_key)
+    ) -> tuple[typing.Any, int] | tuple[None, None]:
+        try:
+            with winreg.OpenKey(hive, key) as open_key:
+                value, data_type = winreg.QueryValueEx(open_key, sub_key)
+        except OSError:
+            return None, None
 
         hive_name = get_hive_name(hive)
         data_type_name = get_data_type_name(data_type)
@@ -224,6 +355,11 @@ class Windows(dotbot.plugin.Plugin):  # type: ignore[misc]
 
 @functools.lru_cache
 def get_hive_name(hive: int) -> str:
+    """Get the name of a hive given its integer identifier.
+
+    Hive identifiers are unique.
+    """
+
     hives = {
         getattr(winreg, name): name for name in dir(winreg) if name.startswith("HKEY_")
     }
@@ -232,7 +368,20 @@ def get_hive_name(hive: int) -> str:
 
 @functools.lru_cache
 def get_data_type_name(data_type: int) -> str:
-    data_types = {
-        getattr(winreg, name): name for name in dir(winreg) if name.startswith("REG_")
-    }
-    return data_types.get(data_type, "UNKNOWN_DATA_TYPE")
+    """Get a name for a data type given an integer identifier.
+
+    Data types are not unique, so the name returned may not match expectations.
+    For example, REG_DWORD and REG_DWORD_LITTLE_ENDIAN share the same value.
+    This function chooses the shortest name from the available options.
+    """
+
+    names = sorted(
+        (len(name), name)
+        for name in dir(winreg)
+        if name.startswith("REG_") and getattr(winreg, name) == data_type
+    )
+
+    if names:
+        return names[0][1]
+
+    return "UNKNOWN_DATA_TYPE"

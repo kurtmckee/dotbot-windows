@@ -1,5 +1,5 @@
 ..  dotbot-windows -- Configure Windows using dotbot.
-..  Copyright 2023 Kurt McKee <contactme@kurtmckee.org>
+..  Copyright 2023-2024 Kurt McKee <contactme@kurtmckee.org>
 ..  SPDX-License-Identifier: MIT
 
 
@@ -34,10 +34,13 @@ Sample configuration:
 
     windows:
       personalization:
-        background-color: "#0099ff"
+        background-color: "#2A4661"
 
       registry:
         import: "my-registry-tweaks/"
+
+      fonts:
+        path: "my-standard-fonts/"
 
 
 Installation
@@ -130,7 +133,7 @@ Configuration
 
 **Personalization**
 
-You can configure the desktop background color using a hexadecimal color (like ``"#0099ff"``)
+You can configure the desktop background color using a hexadecimal color (like ``"#2A4661"``)
 or a triplet of decimal RGB values (like ``"0 153 255"``).
 
 Here are examples demonstrating the two formats:
@@ -139,13 +142,13 @@ Here are examples demonstrating the two formats:
 
     windows:
         personalization:
-            background-color: "#0099ff"
+            background-color: "#2A4661"
 
 ..  code-block:: yaml
 
     windows:
         personalization:
-            background-color: "0 153 255"
+            background-color: "42 70 97"
 
 **Registry**
 
@@ -162,6 +165,28 @@ Here's a dotbot configuration file example:
     windows:
         registry:
             import: "registry-export-files"
+
+
+**Fonts**
+
+Starting with Windows 10 build 17704, users can `install fonts without admin permissions`_.
+The fonts can be copied into ``"%LOCALAPPDATA%/Microsoft/Windows/Fonts"``,
+so this plugin replaces that directory with a symlink to a directory of your choosing.
+
+Here's a dotbot configuration file example:
+
+..  code-block:: yaml
+
+    windows:
+      fonts:
+        path: "my-standard-fonts/"
+
+..  note::
+
+    This plugin will only create the symlink -- or update it -- under these circumstances:
+
+    *   The user's Windows font directory must be an empty directory,
+    *   OR the font directory must already be a symlink
 
 
 Development
@@ -181,8 +206,8 @@ Then, follow these steps to create a virtual environment and run the unit tests 
     # Update pip and setuptools, and install wheel
     (.venv) $ pip install -U pip setuptools wheel
 
-    # Install poetry and tox
-    (.venv) $ pip install poetry tox
+    # Install poetry, tox, and scriv
+    (.venv) $ pip install poetry tox scriv
 
     # Install all dependencies
     (.venv) $ poetry install
@@ -195,3 +220,4 @@ Then, follow these steps to create a virtual environment and run the unit tests 
 ..  =====
 ..
 ..  _dotbot: https://github.com/anishathalye/dotbot
+..  _install fonts without admin permissions: https://blogs.windows.com/windows-insider/2018/06/27/announcing-windows-10-insider-preview-build-17704/
