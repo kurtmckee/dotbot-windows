@@ -1,4 +1,4 @@
-name: "Test"
+name: "🧪 Test"
 
 on:
   pull_request:
@@ -9,50 +9,31 @@ on:
 
 jobs:
   test:
-    name: "Test"
-    runs-on: "windows-latest"
+    name: "Windows"
 
     strategy:
+      fail-fast: false
       matrix:
-        run:
+        runner:
+          - "windows-latest"
+
+        include:
+          # These values will be applied to all runners listed above.
           - cpythons:
-              - "3.8"
               - "3.9"
               - "3.10"
               - "3.11"
               - "3.12"
+            cpython-beta: "3.13"
+            tox-post-environments:
+              - "coverage-report-ci"
+              - "mypy"
+            cache-paths:
+              - ".mypy_cache/"
+            cache-key-hash-files:
+              - "pyproject.toml"
+              - "requirements/*/*.txt"
 
-    steps:
-      - name: "Checkout branch"
-        uses: "actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332" # v4.1.7
-
-      - name: "Setup Pythons"
-        id: "setup-python"
-        uses: "actions/setup-python@f677139bbe7f9c59b41e40162b753c062f5d49a3" # v5.2.0
-        with:
-          python-version: "${{ join(matrix.run.cpythons, '\n') }}"
-          allow-prereleases: true
-
-      - name: "Detect Pythons"
-        uses: "kurtmckee/detect-pythons@38187a5464f266e93e5c1467699f7be2bf521d2e" # v1.1.0
-
-      - name: "Restore cache"
-        id: "restore-cache"
-        uses: "actions/cache@0c45773b623bea8c8e75f6c82b208c3cf94ea4f9" # v4.0.2
-        with:
-          path: |
-            .mypy_cache/
-            .tox/
-            .venv/
-          key: "test-os=${{ runner.os }}-hash=${{ hashFiles('.python-identifiers', 'pyproject.toml', 'tox.ini', 'requirements/**/*.txt') }}"
-
-      - name: "Create a virtual environment"
-        if: "steps.restore-cache.outputs.cache-hit == false"
-        run: |
-          python -m venv .venv
-          .venv/Scripts/python -m pip install --upgrade pip setuptools wheel
-          .venv/Scripts/pip install tox
-
-      - name: "Test"
-        run: |
-          .venv/Scripts/tox run --colored yes -e py${{ join(matrix.run.cpythons, ',py') }},coverage-report-ci,mypy
+    uses: "kurtmckee/github-workflows/.github/workflows/tox.yaml@420931a88d3f09ca8dbce4778d145ed610c231e0" # v0.4
+    with:
+      config: "${{ toJSON(matrix) }}"
