@@ -1,5 +1,5 @@
 # dotbot-windows -- Configure Windows using dotbot.
-# Copyright 2023-2024 Kurt McKee <contactme@kurtmckee.org>
+# Copyright 2023-2025 Kurt McKee <contactme@kurtmckee.org>
 # SPDX-License-Identifier: MIT
 
 import pathlib
@@ -21,7 +21,7 @@ def test_versions_match():
     """Verify that duplicated version numbers all match."""
 
     with open("pyproject.toml", "rb") as file:
-        toml_version: str = tomllib.load(file)["tool"]["poetry"]["version"]
+        toml_version: str = tomllib.load(file)["project"]["version"]
     assert toml_version != ""
 
     with open("dotbot_windows.py") as file:
